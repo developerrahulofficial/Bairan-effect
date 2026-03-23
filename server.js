@@ -15,6 +15,7 @@ const FFMPEG = 'ffmpeg';
 const TEMP_BASE_DIR = 'temp-requests';
 let isProcessing = false; // Simple lock for sequential processing to avoid OOM in cloud
 const processingQueue = [];
+const taskStatus = new Map(); // Store status of each requestId
 
 if (!fs.existsSync(TEMP_BASE_DIR)) fs.mkdirSync(TEMP_BASE_DIR, { recursive: true });
 
@@ -369,14 +370,20 @@ app.post('/upload-and-process', upload.fields([
   if (!requestId) return res.status(400).json({ error: 'No files uploaded' });
   const workDir = path.join(TEMP_BASE_DIR, requestId);
 
+  // Initialize status
+  taskStatus.set(requestId, { status: 'queued', progress: 0 });
+
   // Add to queue logic
   const processTask = async () => {
     try {
+      taskStatus.set(requestId, { status: 'processing', progress: 10 });
       console.log(`🚀 Starting processing for ${requestId}...`);
       const result = await processVideo(null, false, null, false, null, null, workDir);
+      taskStatus.set(requestId, { status: 'completed', result: result });
       return result;
     } catch (error) {
        console.error(`❌ Error processing ${requestId}:`, error.message);
+       taskStatus.set(requestId, { status: 'failed', error: error.message });
        throw error;
     }
   };
@@ -397,16 +404,23 @@ app.post('/upload-and-process', upload.fields([
     }
   };
 
-  try {
-    // Wrap task in a promise to wait for its turn in the queue
-    const result = await new Promise((resolve, reject) => {
-      processingQueue.push({ task: processTask, resolve, reject });
-      runNextTask();
-    });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  // Push to queue but DON'T await it here for the HTTP response
+  processingQueue.push({ 
+    task: processTask, 
+    resolve: () => console.log(`✅ ${requestId} done`), 
+    reject: () => console.log(`❌ ${requestId} failed`) 
+  });
+  runNextTask();
+
+  // Respond immediately with the requestId so the frontend can poll
+  res.json({ success: true, requestId: requestId, status: 'queued' });
+});
+
+app.get('/status/:requestId', (req, res) => {
+  const requestId = req.params.requestId;
+  const status = taskStatus.get(requestId);
+  if (!status) return res.status(404).json({ error: 'Task not found' });
+  res.json(status);
 });
 
 app.get('/download/:filename', (req, res) => {

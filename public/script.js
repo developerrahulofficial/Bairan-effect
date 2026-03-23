@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resultArea.classList.add('hidden');
         resetProgress();
 
-        // Start Fake Progress (since actual progress is hard to track via simple Fetch without WebSockets)
+        // Start Fake Progress
         const progressInterval = simulateProgress();
 
         try {
@@ -78,15 +78,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: formData
             });
 
-            const result = await response.json();
-            clearInterval(progressInterval);
-
-            if (result.success) {
-                completeProgress();
-                showResult(result.downloadUrl);
-            } else {
-                throw new Error(result.error || 'Processing failed');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Upload failed');
             }
+
+            const { requestId } = await response.json();
+            
+            // Polling loop
+            const poll = async () => {
+                try {
+                    const statusRes = await fetch(`/status/${requestId}`);
+                    const data = await statusRes.json();
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(progressInterval);
+                        completeProgress();
+                        showResult(data.result.downloadUrl);
+                    } else if (data.status === 'failed') {
+                        clearInterval(progressInterval);
+                        throw new Error(data.error || 'Processing failed');
+                    } else {
+                        // Still processing or queued
+                        setTimeout(poll, 2000); // Poll every 2 seconds
+                    }
+                } catch (err) {
+                    clearInterval(progressInterval);
+                    alert(`Error: ${err.message}`);
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('loading');
+                    statusSection.classList.add('hidden');
+                }
+            };
+            
+            poll();
+
         } catch (error) {
             clearInterval(progressInterval);
             alert(`Error: ${error.message}`);
