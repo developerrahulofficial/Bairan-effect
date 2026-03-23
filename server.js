@@ -363,7 +363,7 @@ app.post('/process', async (req, res) => {
 
 app.post('/upload-and-process', upload.fields([
   { name: 'video', maxCount: 1 },
-  { name: 'photos', maxCount: 20 }
+  { name: 'photos', maxCount: 100 }
 ]), async (req, res) => {
   const requestId = req.requestId;
   if (!requestId) return res.status(400).json({ error: 'No files uploaded' });
@@ -411,13 +411,26 @@ app.post('/upload-and-process', upload.fields([
 
 app.get('/download/:filename', (req, res) => {
   const filename = req.params.filename;
-  const filepath = path.join(__dirname, 'output', filename);
-  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'File not found' });
-  res.download(filepath);
+  const filePath = path.join(__dirname, 'output', filename);
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
 });
 
 app.get('/status', (req, res) => {
   res.json({ status: 'running' });
+});
+
+// Global Error Handler to catch Multer errors and return JSON
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error('❌ Multer Error:', err.message, 'Code:', err.code);
+    return res.status(400).json({ success: false, error: `Upload error: ${err.message}. (Max 100 photos)` });
+  }
+  console.error('❌ Unhandled Server Error:', err.stack);
+  res.status(500).json({ success: false, error: 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || process.env.PORT_SERVER || 3005;
