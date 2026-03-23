@@ -423,6 +423,10 @@ app.get('/status', (req, res) => {
   res.json({ status: 'running' });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // Global Error Handler to catch Multer errors and return JSON
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
