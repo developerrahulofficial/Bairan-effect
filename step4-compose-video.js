@@ -10,7 +10,10 @@ const MIDDLE_SLIDESHOW = path.join(OUTPUT_DIR, 'middle-slideshow.mp4');
 const MIDDLE_VIDEO = path.join(workDir, 'middle-video.mp4');
 const MIDDLE = fs.existsSync(MIDDLE_SLIDESHOW) ? MIDDLE_SLIDESHOW : MIDDLE_VIDEO;
 const STICKER = path.join(OUTPUT_DIR, 'bordered-image.png');
-const AUDIO_FILE = path.join(workDir, 'barain.mp3');
+const AUDIO_FILE_CANDIDATES = [
+  path.join(workDir, 'barain.mp3'),
+  path.join(__dirname, 'barain.mp3')
+];
 const OUTPUT = path.join(OUTPUT_DIR, 'final-video.mp4');
 
 if (!fs.existsSync(OUTPUT_DIR)) {
@@ -22,6 +25,18 @@ function getDur(file) {
   const dur = execSync(cmd).toString().trim();
   const [h,m,s] = dur.split(':').map(Number);
   return h*3600 + m*60 + s;
+}
+
+function resolveAudioFile() {
+  const audioFile = AUDIO_FILE_CANDIDATES.find(candidate => fs.existsSync(candidate));
+
+  if (!audioFile) {
+    throw new Error(
+      `Bairan soundtrack not found. Checked: ${AUDIO_FILE_CANDIDATES.join(', ')}`
+    );
+  }
+
+  return audioFile;
 }
 
 function main() {
@@ -84,9 +99,11 @@ function main() {
   // Step 3: Compose final with Camera Shake
   console.log('Step 3: Final composition with audio and shake...');
   try {
-    const audioInput = fs.existsSync(AUDIO_FILE) ? `-stream_loop -1 -i "${AUDIO_FILE}"` : '';
-    const audioMap = fs.existsSync(AUDIO_FILE) ? `-map [out_a] -c:a aac -b:a 192k` : '';
-    const audioFilter = fs.existsSync(AUDIO_FILE) ? `;[3:a]anull[out_a]` : '';
+    const audioFile = resolveAudioFile();
+    console.log(`Using soundtrack: ${audioFile}`);
+    const audioInput = `-stream_loop -1 -i "${audioFile}"`;
+    const audioMap = `-map [out_a] -c:a aac -b:a 192k`;
+    const audioFilter = `;[3:a]anull[out_a]`;
 
     execSync(`${FFMPEG} -i "${OUTPUT_DIR}/extended-main.mp4" -i "${OUTPUT_DIR}/middle-curtain.mp4" -i "${STICKER}" ${audioInput} -filter_complex "` +
       `[0:v]fps=60,scale=1080:1920[v0];` +
